@@ -103,11 +103,9 @@ echo "--- Обновляем список пакетов и устанавлив
 sudo apt update && sudo apt upgrade -y
 
 # --- Шаг 3: Загрузка архива GlobalProtect ---
-echo "--- Скачиваем архив с GlobalProtect по прямой ссылке: $DOWNLOAD_GP_URL ---"
-# Используем -O для сохранения файла под заданным именем ARCHIVE_NAME
-wget "$DOWNLOAD_GP_URL" -O "$ARCHIVE_NAME"
-
-# Проверяем, успешно ли скачался архив GlobalProtect
+echo "--- Скачиваем архив с GlobalProtect по прямой ссылке: $DOWNLOAD_GP_URL в /tmp ---"
+# Скачиваем архив во временную директорию /tmp для последующей очистки
+wget "$DOWNLOAD_GP_URL" -O /tmp/"$ARCHIVE_NAME"
 if [ $? -ne 0 ]; then
     echo "Ошибка: Не удалось скачать архив GlobalProtect '$ARCHIVE_NAME' с '$DOWNLOAD_GP_URL'."
     echo "Пожалуйста, проверьте ссылку или ваше интернет-соединение."
@@ -116,14 +114,15 @@ fi
 echo "Архив GlobalProtect '$ARCHIVE_NAME' успешно скачан."
 
 # --- Шаг 4: Разархивирование файла GlobalProtect ---
-echo "--- Разархивируем $ARCHIVE_NAME ---"
-if [ -f "$ARCHIVE_NAME" ]; then
-    tar -xvf "./$ARCHIVE_NAME"
-    echo "Архив GlobalProtect успешно разархивирован."
-else
-    echo "Ошибка: Архив GlobalProtect $ARCHIVE_NAME не найден после скачивания. Это неожиданно."
+echo "--- Разархивируем $ARCHIVE_NAME из /tmp в текущую директорию ---"
+# Распаковываем из /tmp в текущую директорию скрипта
+tar -xvf /tmp/"$ARCHIVE_NAME"
+if [ $? -ne 0 ]; then
+    echo "Ошибка: Не удалось разархивировать архив GlobalProtect '$ARCHIVE_NAME'."
+    echo "Пожалуйста, убедитесь, что архив не поврежден."
     exit 1
 fi
+echo "Архив GlobalProtect успешно разархивирован."
 
 # --- Шаг 5: Запуск установки приложения GlobalProtect ---
 echo "--- Запускаем установку GlobalProtect ---"
@@ -186,15 +185,22 @@ sudo systemctl restart systemd-resolved
 
 echo "Установка GlobalProtect и настройка DNS завершены."
 
-# --- Шаг 8: Очистка скачанных файлов ---
+# --- Шаг 8: Очистка скачанных и распакованных файлов ---
 echo "--- Очистка временных файлов ---"
-if [ -f "$ARCHIVE_NAME" ]; then
-    echo "Удаляем скачанный архив: $ARCHIVE_NAME"
-    rm "$ARCHIVE_NAME"
-fi
-if [ -f "$DEB_PACKAGE_NAME" ]; then
-    echo "Удаляем распакованный DEB-пакет: $DEB_PACKAGE_NAME"
-    rm "$DEB_PACKAGE_NAME"
+if [ -f "/tmp/$ARCHIVE_NAME" ]; then
+    echo "Очистка распакованных файлов из архива '$ARCHIVE_NAME'..."
+    # Получаем список всех уникальных элементов верхнего уровня, распакованных из архива
+    EXTRACTED_TOP_LEVEL_ITEMS=$(tar -tf "/tmp/$ARCHIVE_NAME" | awk -F'/' '{print $1}' | sort -u)
+
+    for item in $EXTRACTED_TOP_LEVEL_ITEMS; do
+        if [ -e "$item" ]; then # Проверяем, существует ли этот элемент в текущей директории
+            echo "Удаление: $item"
+            rm -rf "$item" # Удаляем файл или директорию рекурсивно
+        fi
+    done
+
+    echo "Удаляем скачанный архив из /tmp: $ARCHIVE_NAME"
+    rm "/tmp/$ARCHIVE_NAME"
 fi
 echo "Очистка завершена."
 
