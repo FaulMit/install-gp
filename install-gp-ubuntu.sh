@@ -1,16 +1,60 @@
 #!/bin/bash
 
-# Название архива с установочным файлом GlobalProtect
-ARCHIVE_NAME="PanGPLinux-6.2.0-c10.tgz"
-# Название DEB-пакета GlobalProtect (предполагаем, что оно не изменилось после распаковки .tgz)
-DEB_PACKAGE_NAME="GlobalProtect_UI_deb-6.2.0.1-265.deb"
-# Прямая ссылка для скачивания архива GlobalProtect
-DOWNLOAD_GP_URL="https://cloud.rozetka.ua/s/rPaTLHw4yFbcDLZ/download/PanGPLinux-6.2.0-c10.tgz"
-
-# Имя файла сертификата и ссылка для его скачивания
+# --- Переменные для сертификата (общие для всех версий) ---
 CERT_FILENAME="Root256.crt"
 CERT_DOWNLOAD_URL="https://lake.rozetka.com.ua/PUPCA.cer"
 
+# --- Проверка операционной системы и её версии ---
+echo "Проверяем операционную систему..."
+OS_NAME=$(lsb_release -is 2>/dev/null)
+if [ "$OS_NAME" != "Ubuntu" ]; then
+    echo "Ошибка: Этот скрипт предназначен только для Ubuntu."
+    echo "Ваша система: $OS_NAME"
+    exit 1
+fi
+
+OS_VERSION=$(lsb_release -rs 2>/dev/null)
+if [ -z "$OS_VERSION" ]; then
+    echo "Ошибка: Не удалось определить версию Ubuntu. Пожалуйста, убедитесь, что утилита 'lsb_release' установлена."
+    exit 1
+fi
+
+# Переменные для GlobalProtect, которые будут установлены в зависимости от версии
+ARCHIVE_NAME=""
+DEB_PACKAGE_NAME=""
+DOWNLOAD_GP_URL=""
+GP_VERSION_STRING="" # Используем для определения метода установки
+INSTALL_METHOD=""    # Переменная для хранения метода установки
+
+# Определяем, какую версию GlobalProtect устанавливать, основываясь на версии Ubuntu
+# Ubuntu < 23.10 (например, 20.04, 22.04 LTS)
+if awk -v ver="$OS_VERSION" 'BEGIN {exit !(ver < 23.10)}'; then
+    GP_VERSION_STRING="6.1.0"
+    ARCHIVE_NAME="PanGPLinux-6.1.0-c45.tgz"
+    DEB_PACKAGE_NAME="GlobalProtect_UI_deb-6.1.0.0-44.deb"
+    DOWNLOAD_GP_URL="https://cloud.rozetka.ua/s/og7BDCJDPsMfrmA/download/PanGPLinux-6.1.0-c45.tgz"
+    INSTALL_METHOD="dpkg"
+    echo "Определена Ubuntu версии $OS_VERSION (менее 23.10). Будет установлен GlobalProtect версии $GP_VERSION_STRING."
+
+# Ubuntu >= 24.04 (например, 24.04 LTS, 24.10)
+elif awk -v ver="$OS_VERSION" 'BEGIN {exit !(ver >= 24.04)}'; then
+    GP_VERSION_STRING="6.2.0"
+    ARCHIVE_NAME="PanGPLinux-6.2.0-c10.tgz"
+    DEB_PACKAGE_NAME="GlobalProtect_UI_deb-6.2.0.1-265.deb"
+    DOWNLOAD_GP_URL="https://cloud.rozetka.ua/s/rPaTLHw4yFbcDLZ/download/PanGPLinux-6.2.0-c10.tgz"
+    INSTALL_METHOD="apt"
+    echo "Определена Ubuntu версии $OS_VERSION (24.04 или выше). Будет установлен GlobalProtect версии $GP_VERSION_STRING."
+
+# Версии между 23.10 и 24.04 (включая 23.10, если бы она была выпущена, и 23.04) не поддерживаются.
+else
+    echo "Ошибка: Ваша версия Ubuntu ($OS_VERSION) не поддерживается этим скриптом."
+    echo "Скрипт поддерживает Ubuntu версий < 23.10 или >= 24.04."
+    echo "Пожалуйста, обновите или переустановите ОС на поддерживаемую версию."
+    exit 1
+fi
+
+echo "Система проверена. Продолжаем установку GlobalProtect версии $GP_VERSION_STRING..."
+echo "---"
 
 echo "Начинаем автоматическую установку GlobalProtect и настройку сертификатов..."
 
@@ -84,7 +128,34 @@ fi
 # --- Шаг 5: Запуск установки приложения GlobalProtect ---
 echo "--- Запускаем установку GlobalProtect ---"
 if [ -f "$DEB_PACKAGE_NAME" ]; then
-    sudo apt-get install "./$DEB_PACKAGE_NAME" -y
+    if [ "$INSTALL_METHOD" == "dpkg" ]; then
+        echo "Используем dpkg -i для установки DEB-пакета..."
+        sudo dpkg -i "./$DEB_PACKAGE_NAME"
+        if [ $? -ne 0 ]; then
+            echo "Предупреждение: Установка GlobalProtect через dpkg завершилась с ошибкой. Попытка исправить зависимости..."
+            sudo apt --fix-broken install -y
+            # Повторная попытка установки после исправления зависимостей, если apt --fix-broken install не установил
+            echo "Повторная попытка установки GlobalProtect после исправления зависимостей..."
+            sudo dpkg -i "./$DEB_PACKAGE_NAME"
+            if [ $? -ne 0 ]; then
+                echo "Ошибка: Не удалось установить GlobalProtect даже после попытки исправить зависимости."
+                exit 1
+            fi
+        fi
+    elif [ "$INSTALL_METHOD" == "apt" ]; then
+        echo "Используем apt install для установки DEB-пакета..."
+        sudo apt install "./$DEB_PACKAGE_NAME" -y
+        if [ $? -ne 0 ]; then
+            echo "Предупреждение: Установка GlobalProtect через apt завершилась с ошибкой. Попытка исправить зависимости..."
+            sudo apt --fix-broken install -y
+            # Повторная попытка установки после исправления зависимостей
+            sudo apt install "./$DEB_PACKAGE_NAME" -y
+            if [ $? -ne 0 ]; then
+                echo "Ошибка: Не удалось установить GlobalProtect даже после попытки исправить зависимости."
+                exit 1
+            fi
+        fi
+    fi
     echo "GlobalProtect успешно установлен."
 else
     echo "Ошибка: DEB-пакет $DEB_PACKAGE_NAME не найден. Убедитесь, что он был разархивирован из архива."
@@ -126,7 +197,7 @@ echo "Для Firefox:"
 echo "1. Откройте Firefox и перейдите по ссылке: about:preferences#privacy"
 echo "2. Прокрутите вниз до раздела 'Сертификаты'."
 echo "3. Нажмите кнопку 'Просмотр сертификатов...'"
-echo "4. Перейдите на вкладку 'Центры сертификации'."
+Cecho "4. Перейдите на вкладку 'Центры сертификации'."
 echo "5. Нажмите 'Импорт...' и выберите скачанный файл сертификата."
 echo "6. Отметьте галочки доверия для этого сертификата."
 echo ""
