@@ -186,6 +186,18 @@ sudo systemctl restart systemd-resolved
 
 echo "Установка GlobalProtect и настройка DNS завершены."
 
+# --- Шаг 8: Очистка скачанных файлов ---
+echo "--- Очистка временных файлов ---"
+if [ -f "$ARCHIVE_NAME" ]; then
+    echo "Удаляем скачанный архив: $ARCHIVE_NAME"
+    rm "$ARCHIVE_NAME"
+fi
+if [ -f "$DEB_PACKAGE_NAME" ]; then
+    echo "Удаляем распакованный DEB-пакет: $DEB_PACKAGE_NAME"
+    rm "$DEB_PACKAGE_NAME"
+fi
+echo "Очистка завершена."
+
 # --- Инструкции по ручной установке сертификата в браузеры ---
 echo ""
 echo "--- ВАЖНО: Ручная установка сертификата в браузеры ---"
